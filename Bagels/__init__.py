@@ -34,7 +34,7 @@ class Window(GraphicEngine.PygameGFX):
             surface=self.DisplaySurface,
             rect=pygame.Rect(self.Width / 2 - 75, self.Height - 75, 150, 50),
             command=self.ButtonPressed,
-            label="Rozpocznij",
+            label="Start",
             font=pygame.font.SysFont("ArialBold", 24),
         )
         self.guesses: List[str] = []
