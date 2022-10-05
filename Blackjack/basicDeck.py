@@ -59,7 +59,7 @@ class BasicDeck(ABC):
         self._discard: List[Card] = []
 
     def getCard(self) -> Card:
-        if not self._cards:
+        if len(self._cards) < 1:
             self.shuffleDiscard()
         return self._cards.pop()
 

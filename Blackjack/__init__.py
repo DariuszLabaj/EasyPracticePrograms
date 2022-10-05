@@ -19,22 +19,21 @@ class GameState(Enum):
     Game = auto()
     ChooseWiner = auto()
     OpponentTurn = auto()
-    Win = auto()
-    Lost = auto()
 
 
 class Window(GraphicEngine.PygameGFX):
+    gameState = GameState.Introduction
+    wallet = START_AMOUNT
+    bet = 0
+    lastWin = 0
+
     def Setup(self):
-        self.background(51)
-        self.gameState = GameState.Introduction
+        self.initValues()
         self.setFont("Arial", 16)
         self.deck = BlackjackDeck(self.DisplaySurface, 120, (10, 10))
-        self.player: List[Card] = []
-        self.cpu: List[Card] = []
-        self.drawText(Texts.RULES, (255, 255, 255), (10, 10))
-        self.wallet = START_AMOUNT
-        self.bet = 0
-        self.lastWin = 0
+        self.createButtons()
+
+    def createButtons(self):
         self.startButton = Window.Button(
             surface=self.DisplaySurface,
             rect=pygame.Rect(self.Width / 2 - 75, self.Height - 75, 150, 50),
@@ -45,7 +44,7 @@ class Window(GraphicEngine.PygameGFX):
         self.passButton = Window.Button(
             surface=self.DisplaySurface,
             rect=pygame.Rect(20, self.Height / 2, 150, 50),
-            command=self.OppenentTurn,
+            command=self.StartOpponentTurn,
             label="Stand",
             font=pygame.font.SysFont("ArialBold", 24),
         )
@@ -79,7 +78,15 @@ class Window(GraphicEngine.PygameGFX):
         if self.bet - 10 >= 0:
             self.bet -= 10
 
+    def initValues(self):
+        self.playerScore = 0
+        self.cpuScore = 0
+        self.player: List[Card] = []
+        self.cpu: List[Card] = []
+        self.endscreenDelay = 1
+
     def StartBet(self):
+        # init values
         for card in self.player:
             self.deck.discardCard(card)
         for card in self.cpu:
@@ -87,25 +94,26 @@ class Window(GraphicEngine.PygameGFX):
         if self.bet > self.wallet:
             self.bet = self.wallet
         self.wallet += self.lastWin
+        self.initValues()
         self.gameState = GameState.Bet
+
+    def DealCards(self):
+        for _ in range(2):
+            self.player.append(self.deck.getCard())
+            self.cpu.append(self.deck.getCard())
 
     def StartGame(self):
         if self.bet <= 0 or self.wallet <= 0:
             return
         self.wallet -= self.bet
+        self.DealCards()
         self.gameState = GameState.Game
-        self.player: List[Card] = []
-        self.cpu: List[Card] = []
-        self.endscreenDelay = 1
-        for _ in range(2):
-            self.player.append(self.deck.getCard())
-            self.cpu.append(self.deck.getCard())
 
-    def OppenentTurn(self):
+    def StartOpponentTurn(self):
         self.gameState = GameState.OpponentTurn
         self.FilpCards(self.cpu, [])
 
-    def ChooseWiner(self):
+    def StartChooseWiner(self):
         self.gameState = GameState.ChooseWiner
         self.FilpCards(self.cpu, [])
 
@@ -134,7 +142,8 @@ class Window(GraphicEngine.PygameGFX):
             posy = pos[1] if i < MAX_CARDS / 2 else pos[1] + self.deck.height / 4
             card.show((posx, posy))
 
-    def CalculateScore(self, hand: List[Card]) -> int:
+    @staticmethod
+    def CalculateScore(hand: List[Card]) -> int:
         score = 0
         aces = 0
         for card in hand:
@@ -149,107 +158,116 @@ class Window(GraphicEngine.PygameGFX):
                 score += 10
         return score
 
-    def showBoard(self):
-        self.background(51)
+    def drawTable(self):
+        self.background(0x04, 0x61, 0x34)
         self.ShowCards(self.cpu, (190, 10))
         self.ShowCards(self.player, (100, 330))
         self.FilpCards(self.player, [])
         self.FilpCards(self.cpu, [0])
 
+    def drawIntroduction(self):
+        self.background(51)
+        self.drawText(Texts.RULES, (255, 255, 255), (10, 10))
+        self.startButton.update()
+        self.startButton.show()
+
+    def drawBet(self):
+        self.background(51)
+        nextline = self.drawText(
+            f"How much you want to bet : {self.bet}",
+            (255, 255, 255),
+            (self.Width / 2 - 110, self.Height / 2 - 20),
+        )
+        self.drawText(
+            f"You have in you wallet: {self.wallet}",
+            (255, 255, 255),
+            (self.Width / 2 - 110, nextline + 10),
+        )
+        self.betButton.update()
+        self.betButton.show()
+        self.increaseButton.update()
+        self.increaseButton.show()
+        self.decreaseButton.update()
+        self.decreaseButton.show()
+
+    def drawGame(self):
+        self.playerScore = self.CalculateScore(self.player)
+        self.drawTable()
+        self.drawText(f"Your Score : {self.playerScore}", (255, 255, 255), (10, 300))
+        self.deck.show()
+        self.passButton.update()
+        self.passButton.show()
+        if self.playerScore >= 21:
+            self.endscreenDelay += 1
+        if self.endscreenDelay % 60 == 0:
+            self.StartOpponentTurn()
+
+    def drawOpponentTurn(self):
+        self.drawTable()
+        self.deck.show()
+        self.cpuScore = self.CalculateScore(self.cpu)
+        if self.endscreenDelay % 60 == 0:
+            if self.cpuScore < self.playerScore and self.playerScore <= 21:
+                self.cpu.append(self.deck.getCard())
+            elif self.cpuScore == self.playerScore and self.cpuScore < CPU_SCORE_PASS:
+                self.cpu.append(self.deck.getCard())
+            else:
+                self.StartChooseWiner()
+        self.endscreenDelay += 1
+
+    def drawChooseWiner(self):
+        self.drawTable()
+        if self.playerScore > 21 or (
+            self.cpuScore > self.playerScore and self.cpuScore <= 21
+        ):
+            nextLine = self.drawText(
+                f"You Lost with score : {self.playerScore}",
+                (255, 255, 255),
+                (10, 250),
+            )
+            nextLine = self.drawText(
+                f"Your Opponent had : {self.cpuScore}",
+                (255, 255, 255),
+                (10, nextLine + 10),
+            )
+            self.drawText("Want to try again?", (255, 255, 255), (10, nextLine + 10))
+            self.lastWin = 0
+        elif self.playerScore > self.cpuScore or self.cpuScore > 21:
+            nextLine = self.drawText(
+                f"You Win with score : {self.playerScore}",
+                (255, 255, 255),
+                (10, 10),
+            )
+            nextLine = self.drawText(
+                f"Your Opponent had : {self.cpuScore}",
+                (255, 255, 255),
+                (10, nextLine + 10),
+            )
+            self.drawText("Want to try again?", (255, 255, 255), (10, nextLine + 10))
+            if self.playerScore == 21 and len(self.player) == 2:
+                self.lastWin = self.bet + self.bet * 1.5
+            else:
+                self.lastWin = self.bet * 2
+        else:
+            nextLine = self.drawText(
+                f"Its a draw, with score : {self.playerScore}",
+                (255, 255, 255),
+                (10, 10),
+            )
+            self.drawText("Want to try again?", (255, 255, 255), (10, nextLine + 10))
+            self.lastWin = self.bet
+        self.startButton.update()
+        self.startButton.show()
+
     def Draw(self):
         match self.gameState:
             case GameState.Introduction:
-                self.startButton.update()
-                self.startButton.show()
+                self.drawIntroduction()
             case GameState.Bet:
-                self.background(51)
-                nextline = self.drawText(
-                    f"How much you want to bet : {self.bet}",
-                    (255, 255, 255),
-                    (self.Width / 2 - 110, self.Height / 2-20),
-                )
-                self.drawText(
-                    f"You have in you wallet: {self.wallet}",
-                    (255, 255, 255),
-                    (self.Width / 2 - 110, nextline+10),
-                )
-                self.betButton.update()
-                self.betButton.show()
-                self.increaseButton.update()
-                self.increaseButton.show()
-                self.decreaseButton.update()
-                self.decreaseButton.show()
+                self.drawBet()
             case GameState.Game:
-                self.playerScore = self.CalculateScore(self.player)
-                self.showBoard()
-                self.drawText(
-                    f"Your Score : {self.playerScore}", (255, 255, 255), (10, 300)
-                )
-                self.deck.show()
-                self.passButton.update()
-                self.passButton.show()
-                if self.playerScore >= 21:
-                    self.endscreenDelay += 1
-                if self.endscreenDelay % 60 == 0:
-                    self.OppenentTurn()
+                self.drawGame()
             case GameState.OpponentTurn:
-                self.showBoard()
-                cpuScore = self.CalculateScore(self.cpu)
-                if self.endscreenDelay % 60 == 0:
-                    if cpuScore < self.playerScore and self.playerScore <= 21:
-                        self.cpu.append(self.deck.getCard())
-                    elif cpuScore == self.playerScore and cpuScore < CPU_SCORE_PASS:
-                        self.cpu.append(self.deck.getCard())
-                    else:
-                        self.ChooseWiner()
-                self.endscreenDelay += 1
+                self.drawOpponentTurn()
             case GameState.ChooseWiner:
-                self.showBoard()
-                cpuScore = self.CalculateScore(self.cpu)
-                if self.playerScore > 21 or (
-                    cpuScore > self.playerScore and cpuScore <= 21
-                ):
-                    nextLine = self.drawText(
-                        f"You Lost with score : {self.playerScore}",
-                        (255, 255, 255),
-                        (10, 250),
-                    )
-                    nextLine = self.drawText(
-                        f"Your Opponent had : {cpuScore}",
-                        (255, 255, 255),
-                        (10, nextLine + 10),
-                    )
-                    self.drawText(
-                        "Want to try again?", (255, 255, 255), (10, nextLine + 10)
-                    )
-                    self.lastWin = 0
-                elif self.playerScore > cpuScore or cpuScore > 21:
-                    nextLine = self.drawText(
-                        f"You Win with score : {self.playerScore}",
-                        (255, 255, 255),
-                        (10, 10),
-                    )
-                    nextLine = self.drawText(
-                        f"Your Opponent had : {cpuScore}",
-                        (255, 255, 255),
-                        (10, nextLine + 10),
-                    )
-                    self.drawText(
-                        "Want to try again?", (255, 255, 255), (10, nextLine + 10)
-                    )
-                    if self.playerScore == 21 and len(self.player) == 2:
-                        self.lastWin = self.bet+self.bet*1.5
-                    else:
-                        self.lastWin = self.bet*2
-                else:
-                    nextLine = self.drawText(
-                        f"Its a draw, with score : {self.playerScore}",
-                        (255, 255, 255),
-                        (10, 10),
-                    )
-                    self.drawText(
-                        "Want to try again?", (255, 255, 255), (10, nextLine + 10)
-                    )
-                    self.lastWin = self.bet
-                self.startButton.update()
-                self.startButton.show()
+                self.drawChooseWiner()
