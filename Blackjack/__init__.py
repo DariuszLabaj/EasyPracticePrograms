@@ -159,7 +159,7 @@ class Window(GraphicEngine.PygameGFX):
         return score
 
     def drawTable(self):
-        self.background(0x04, 0x61, 0x34)
+        self.background((0x04, 0x61, 0x34))
         self.ShowCards(self.cpu, (190, 10))
         self.ShowCards(self.player, (100, 330))
         self.FilpCards(self.player, [])
